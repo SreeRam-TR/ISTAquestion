@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <link rel="stylesheet" href="/static/style.css">
+    <title>View Questions</title>
+</head>
+<body>
+
+<div class="container center">
+    <h2>Interview Questions Library 📚</h2>
+
+    <div class="tags">
+        {% for tag in tags %}
+        <button onclick="loadQuestions('{{ tag }}')">{{ tag }}</button>
+        {% endfor %}
+    </div>
+
+    <ul id="qList"></ul>
+
+    <a href="/" class="view-link">➜ Back to Submit</a>
+</div>
+
+<script>
+async function loadQuestions(tag) {
+    const res = await fetch(`/questions/${tag}`)
+    const data = await res.json()
+
+    const list = document.getElementById("qList");
+    list.innerHTML = `<h3>${tag} Questions</h3>`;
+
+    data.forEach(q => {
+        list.innerHTML += `<li>${q.corrected_question}${q.company_name ? " — <small>("+q.company_name+")</small>" : ""}</li>`;
+    });
+}
+</script>
+
+</body>
+</html>
