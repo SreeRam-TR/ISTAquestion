@@ -1,17 +1,20 @@
 from flask import Flask, render_template, request, jsonify
-from supabase import create_client, Client
 import google.generativeai as genai
 from dotenv import load_dotenv
-import os
-
-import json, re
+import psycopg2
+import json, re, os
 
 load_dotenv()
 
-# Supabase Init
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+# Postgres DB connection
+conn = psycopg2.connect(
+    host=os.getenv("PG_HOST"),
+    database=os.getenv("PG_DATABASE"),
+    user=os.getenv("PG_USER"),
+    password=os.getenv("PG_PASSWORD"),
+    sslmode="require"
+)
+cursor = conn.cursor()
 
 # Gemini Init
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
@@ -23,13 +26,14 @@ app = Flask(__name__)
 def home():
     return render_template("submit.html")
 
+
 @app.route("/view")
 def view_page():
-    # Fetch all unique tags
-    response = supabase.table("questions").select("tag").execute()
-    
-    tags = sorted(list({row["tag"] for row in response.data}))
+    cursor.execute("SELECT DISTINCT tag FROM questions;")
+    rows = cursor.fetchall()
+    tags = sorted([row[0] for row in rows])
     return render_template("view.html", tags=tags)
+
 
 @app.route("/ask", methods=["POST"])
 def ask():
@@ -39,7 +43,7 @@ def ask():
     prompt = f"""
     You are an optimistic AI for interview students.
     1️⃣ Fix grammar of the question
-    2️⃣ Identify the single BEST technology tag
+    2️⃣ Identify the single BEST technology tag or HR question tag also
        (Examples: React, Python, JavaScript, HTML, CSS, OOPS, DB, Backend, OS)
 
     Return JSON ONLY:
@@ -52,27 +56,38 @@ def ask():
     """
 
     ai = model.generate_content(prompt)
-    result = ai.text
-
-    cleaned = re.sub(r"```json|```", "", result).strip()
-
+    cleaned = re.sub(r"```json|```", "", ai.text).strip()
     result = json.loads(cleaned)
+
     corrected = result["corrected"]
     tag = result["tag"]
 
-    supabase.table("questions").insert({
-        "original_question": question,
-        "corrected_question": corrected,
-        "tag": tag,
-        "company_name": company if company else None
-    }).execute()
+    cursor.execute(
+        "INSERT INTO questions (original_question, corrected_question, tag, company_name) VALUES (%s, %s, %s, %s)",
+        (question, corrected, tag, company)
+    )
+    conn.commit()
 
     return jsonify({"status": "success", "corrected": corrected, "tag": tag})
 
+
 @app.route("/questions/<tag>")
 def get_questions(tag):
-    response = supabase.table("questions").select("*").eq("tag", tag).execute()
-    return jsonify(response.data)
+    cursor.execute("SELECT * FROM questions WHERE tag = %s;", (tag,))
+    rows = cursor.fetchall()
+
+    data = []
+    for row in rows:
+        data.append({
+            "id": row[0],
+            "original_question": row[1],
+            "corrected_question": row[2],
+            "tag": row[3],
+            "company_name": row[4]
+        })
+
+    return jsonify(data)
+
 
 if __name__ == "__main__":
     app.run(debug=True)
