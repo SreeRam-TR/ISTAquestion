@@ -1,19 +1,15 @@
 from flask import Flask, render_template, request, jsonify
 import google.generativeai as genai
 from dotenv import load_dotenv
-import psycopg2
+import psycopg
 import json, re, os
 
 load_dotenv()
 
-# Postgres DB connection
-conn = psycopg2.connect(
-    host=os.getenv("PG_HOST"),
-    database=os.getenv("PG_DATABASE"),
-    user=os.getenv("PG_USER"),
-    password=os.getenv("PG_PASSWORD"),
-    sslmode="require"
-)
+
+DB_URL = os.getenv("DATABASE_URL")
+
+conn = psycopg.connect(DB_URL)
 cursor = conn.cursor()
 
 # Gemini Init
